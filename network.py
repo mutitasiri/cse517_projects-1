@@ -81,6 +81,7 @@ class Model(torch.nn.Module):
             raise NotImplementedError("caption_network_type = {} not available".format(self.caption_network_type))
 
         self.image_joint_embedding_layer = torch.nn.Linear(512, self.joint_embedding_size)
+        self.caption_hidden_layer = torch.nn.Linear(2*self.token_embedding_size, self.token_embedding_size)
         self.caption_joint_embedding_layer = torch.nn.Linear(self.token_embedding_size, self.joint_embedding_size)
 
         self.intent_prediction_layer = torch.nn.Linear(self.joint_embedding_size, self.intent_dims)
@@ -96,12 +97,19 @@ class Model(torch.nn.Module):
             x_img (Optional[torch.Tensor]) - Input image tensor
             x_caption (Optional[torch.Tensor]) - Input caption tensor
         """
-        x_img = self.image_network(x_img)
-        x_caption = self.caption_network(x_caption)
+        x_img = self.image_network(x_img) # (batch_size, img_embedding_dim)
+        x_caption = self.caption_network(x_caption) # (batch_size, caption_length, word_embedding_dim)
+
+        # Iterate over the caption
+        caption_length = x_caption.size(1)
+        hidden = torch.zeros(x_caption.size(0), self.token_embedding_size)
+        for t in range(caption_length):
+            x_caption_combined = torch.cat((hidden, x_caption[:, t, :]), dim=1)
+            hidden = self.caption_hidden_layer(x_caption_combined)
 
         # Get each embedding
         x_img_joint_embedding = self.image_joint_embedding_layer(x_img)
-        x_caption_joint_embedding = self.caption_joint_embedding_layer(x_caption)
+        x_caption_joint_embedding = self.caption_joint_embedding_layer(hidden)
 
         # Fusion
         x_fusion = x_img_joint_embedding + x_caption_joint_embedding
@@ -111,7 +119,12 @@ class Model(torch.nn.Module):
         pred_semiotic = self.semiotic_prediction_layer(x_fusion)
         pred_contextual = self.contextual_prediction_layer(x_fusion)
 
-        return (pred_intent, pred_semiotic, pred_contextual)
+        output = {
+            'intent': pred_intent,
+            'semiotic': pred_semiotic,
+            'contextual': pred_contextual,
+        }
+        return output
 
 if __name__ == '__main__':
-    resnet18 = models.resnet18()
+    model = Model(vocab_size=100)
