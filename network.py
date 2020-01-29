@@ -102,7 +102,7 @@ class Model(torch.nn.Module):
 
         # Iterate over the caption
         caption_length = x_caption.size(1)
-        hidden = torch.zeros(x_caption.size(0), self.token_embedding_size)
+        hidden = torch.zeros(x_caption.size(0), self.token_embedding_size).to(x_caption.device)
         for t in range(caption_length):
             x_caption_combined = torch.cat((hidden, x_caption[:, t, :]), dim=1)
             hidden = self.caption_hidden_layer(x_caption_combined)

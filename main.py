@@ -1,14 +1,45 @@
 import argparse
 import json
-from pathlib import Path
 from typing import Dict, Optional, List, Any
-import numpy as np
+import multiprocessing
 import tqdm
 import torch
 import torch.utils.tensorboard as tensorboard
 
 from data import Dictionary, ImageOnlyDataset, ImageTextDataset, TextOnlyDataset
 from network import Model
+
+def collate_fn_pad(batch):
+    """
+    Padds batch of variable length
+    """
+    output = {
+        'id': [],
+        'label': {
+            'intent': [],
+            'semiotic': [],
+            'contextual': [],
+        },
+        'caption': [],
+        'image': [],
+    }
+
+    max_caption_length = 0
+
+    for sample in batch:
+        output['id'].append(sample['id'])
+        output['label']['intent'].append(sample['label']['intent'])
+        output['label']['semiotic'].append(sample['label']['semiotic'])
+        output['label']['contextual'].append(sample['label']['contextual'])
+        output['caption'].append(sample['caption'])
+        output['image'].append(sample['image'])
+
+    output['label']['intent'] = torch.LongTensor(output['label']['intent'])
+    output['label']['semiotic'] = torch.LongTensor(output['label']['semiotic'])
+    output['label']['contextual'] = torch.LongTensor(output['label']['contextual'])
+    output['caption'] = torch.nn.utils.rnn.pad_sequence(output['caption']).t() # (batch_size, sequence_length)
+    output['image'] = torch.stack(output['image'], dim=0)
+    return output
 
 def main(args: argparse.Namespace):
     # Load input data
@@ -45,6 +76,17 @@ def main(args: argparse.Namespace):
     dictionary = Dictionary(tokenizer_method="TreebankWordTokenizer")
     dictionary.build_dictionary_from_captions(train_captions)
 
+    # Set up torch device
+    if 'cuda' in args.device and torch.cuda.is_available():
+        device = torch.device(args.device)
+        kwargs = {'pin_memory': True}
+    else:
+        device = torch.device('cpu')
+        kwargs = {}
+
+    # Set up number of workers
+    num_workers = min(multiprocessing.cpu_count(), args.num_workers)
+
     # Set up data loaders differently based on the task
     # TODO: Extend to ELMo + word2vec etc.
     if args.type == 'image_only':
@@ -57,17 +99,19 @@ def main(args: argparse.Namespace):
         train_dataset = TextOnlyDataset() # TODO: fix
         val_dataset = TextOnlyDataset()
     train_data_loader = torch.utils.data.DataLoader(train_dataset,
-                                                    batch_size=1, # TODO: Fix batch_size=1 using customized collate_fn
+                                                    batch_size=args.batch_size,
                                                     shuffle=args.shuffle,
-                                                    num_workers=args.num_workers,
-                                                    collate_fn=None) # TODO: Fix
+                                                    num_workers=num_workers,
+                                                    collate_fn=collate_fn_pad,
+                                                    **kwargs)
     val_data_loader = torch.utils.data.DataLoader(val_dataset,
-                                                  batch_size=1, # TODO: Fix batch_size=1 using customized collate_fn
-                                                  num_workers=args.num_workers,
-                                                  collate_fn=None) # TODO: Fix
+                                                  batch_size=args.batch_size,
+                                                  num_workers=num_workers,
+                                                  collate_fn=collate_fn_pad,
+                                                  **kwargs)
 
     # Set up the model
-    model = Model(vocab_size=dictionary.size())
+    model = Model(vocab_size=dictionary.size()).to(device)
 
     # Set up an optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
@@ -94,18 +138,20 @@ def main(args: argparse.Namespace):
 
             total_loss = 0
             for _, batch in pbar:
-                caption_data = batch['caption']
-                image_data = batch['image']
-                label = batch['label']
+                caption_data = batch['caption'].to(device)
+                image_data = batch['image'].to(device)
+                label_intent = batch['label']['intent'].to(device)
+                label_semiotic = batch['label']['semiotic'].to(device)
+                label_contextual = batch['label']['contextual'].to(device)
 
                 if mode == "train":
                     model.zero_grad()
 
                 pred = model(image_data, caption_data)
 
-                intent_loss = loss_fn(pred['intent'], label['intent'])
-                semiotic_loss = loss_fn(pred['semiotic'], label['semiotic'])
-                contextual_loss = loss_fn(pred['contextual'], label['contextual'])
+                intent_loss = loss_fn(pred['intent'], label_intent)
+                semiotic_loss = loss_fn(pred['semiotic'], label_semiotic)
+                contextual_loss = loss_fn(pred['contextual'], label_contextual)
                 loss = intent_loss + semiotic_loss + contextual_loss
 
                 total_loss += loss.item()
@@ -135,6 +181,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=4, help="Batch size")
     parser.add_argument('--shuffle', dest='shuffle', action='store_true', help="Whether to shuffle data loader")
     parser.add_argument('--num_workers', type=int, default=4, help="Number of parallel workers")
+    parser.add_argument('--device', type=str, default='cpu', help="Pytorch device")
     parser.add_argument('--tensorboard', dest='tensorboard', action='store_true')
     parser.add_argument('--log_dir', type=str, default='./logs', help="Log directory")
     print(parser.parse_args())
