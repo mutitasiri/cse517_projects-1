@@ -51,7 +51,7 @@ def parse_post(post: Dict[str, Any],
     label_intent = post['intent']
     label_semiotic = post['semiotic']
     label_contextual = post['contextual']
-    caption = post['orig_caption']
+    caption = post['caption']
 
     if image_retriever == "url":
         image = post['url']
@@ -106,7 +106,49 @@ class ImageTextDataset(torch.utils.data.Dataset):
         return output
 
 class ImageOnlyDataset(torch.utils.data.Dataset):
-    pass
+    def __init__(self,
+                 posts: List[Dict[str, Any]],
+                 labels_map: Dict[str, Dict[str, int]]):
+        self.posts = list(map(lambda post: parse_post(post, image_retriever="pretrained"), posts))
+        self.labels_map = labels_map
+
+        # Preprocess posts data
+        for post_id, _ in enumerate(self.posts):
+            # Map str label to integer
+            for label in self.posts[post_id]['label'].keys():
+                self.posts[post_id]['label'][label] = self.labels_map[label][self.posts[post_id]['label'][label]]
+                
+    def __len__(self) -> int:
+        return len(self.posts)
+
+    def __getitem__(self, i: int) -> Dict[str, Any]:
+        output = self.posts[i]
+        output['image'] = torch.from_numpy(output['image']) # pylint: disable=undefined-variable, no-member
+        return output
 
 class TextOnlyDataset(torch.utils.data.Dataset):
-    pass
+    def __init__(self,
+                 posts: List[Dict[str, Any]],
+                 labels_map: Dict[str, Dict[str, int]],
+                 dictionary: Dictionary):
+        self.posts = list(map(lambda post: parse_post(post, image_retriever="pretrained"), posts))
+        self.labels_map = labels_map
+        self.dictionary = dictionary
+
+        # Preprocess posts data
+        for post_id, _ in enumerate(self.posts):
+            # Map str label to integer
+            for label in self.posts[post_id]['label'].keys():
+                self.posts[post_id]['label'][label] = self.labels_map[label][self.posts[post_id]['label'][label]]
+
+            # Convert caption to list of token indices
+            tokenized_captions = self.dictionary.tokenizer.tokenize(self.posts[post_id]['caption'])
+            self.posts[post_id]['caption'] = list(map(self.dictionary.lookup_token, tokenized_captions))
+
+    def __len__(self) -> int:
+        return len(self.posts)
+
+    def __getitem__(self, i: int) -> Dict[str, Any]:
+        output = self.posts[i]
+        output['caption'] = torch.LongTensor(output['caption'])
+        return output
