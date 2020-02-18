@@ -6,6 +6,21 @@ from nltk.tokenize.treebank import TreebankWordTokenizer
 
 UNK_TOKEN = '<UNK>'
 
+import tensorflow_hub as hub
+import tensorflow as tf
+
+#print("Loading elmo")
+#elmo = hub.Module("https://tfhub.dev/google/elmo/2", trainable=True)
+
+# def elmo_vectors(x):
+#     embeddings = elmo(x, signature="default", as_dict=True)["elmo"]
+
+#     with tf.Session() as sess:
+#         sess.run(tf.global_variables_initializer())
+#         sess.run(tf.tables_initializer())
+#         # return average of ELMo features
+#     return sess.run(tf.reduce_mean(embeddings,1))
+
 class Dictionary:
     def __init__(self, tokenizer_method: str = "TreebankWordTokenizer"):
         self.token2idx = {}
@@ -13,6 +28,7 @@ class Dictionary:
 
         if tokenizer_method == "TreebankWordTokenizer":
             self.tokenizer = TreebankWordTokenizer()
+            #self.tokenizer = hub.Module("https://tfhub.dev/google/elmo/2", trainable=True)
         else:
             raise NotImplementedError("tokenizer_method {} doesn't exist".format(tokenizer_method))
 
@@ -21,6 +37,7 @@ class Dictionary:
     def build_dictionary_from_captions(self, captions: List[str]):
         for caption in captions:
             tokens = self.tokenizer.tokenize(caption)
+            #tokens = tokenizer(caption, signature="default", as_dict=True)["elmo"]
             for token in tokens:
                 self.add_token(token)
 
@@ -57,7 +74,8 @@ def parse_post(post: Dict[str, Any],
         image = post['url']
         raise NotImplementedError("Currently cannot download an image from {}".format(image))
     elif image_retriever == "pretrained":
-        image_path = Path(image_basedir) / "{}.npy".format(id)
+        # image_path = Path(image_basedir) / "{}.npy".format(id)
+        image_path = 'resnet18_feat/{}.npy'.format(id)
         image = np.load(image_path)
     elif image_retriever == "ignored":
         image = None
@@ -93,15 +111,23 @@ class ImageTextDataset(torch.utils.data.Dataset):
                 self.posts[post_id]['label'][label] = self.labels_map[label][self.posts[post_id]['label'][label]]
 
             # Convert caption to list of token indices
-            tokenized_captions = self.dictionary.tokenizer.tokenize(self.posts[post_id]['caption'])
-            self.posts[post_id]['caption'] = list(map(self.dictionary.lookup_token, tokenized_captions))
-
+            #print("raw caption: ?", self.posts[post_id]['caption']) #this is still raw text
+            #tokenized_captions = self.dictionary.tokenizer.tokenize(self.posts[post_id]['caption'])
+            
+            #self.posts[post_id]['caption'] = list(map(self.dictionary.lookup_token, tokenized_captions))
+            # try:
+            #     if len([self.posts[post_id]['caption']]) == 0:
+            #         self.posts[post_id]['caption'] = "na"
+            #     self.posts[post_id]['caption'] = elmo([self.posts[post_id]['caption']])
+            # except:
+            #     print ("Exceptions: ",self.posts[post_id]['caption'])
+            #print("raw caption after the list map", self.posts[post_id]['caption']) #this is the vectorized word
     def __len__(self) -> int:
         return len(self.posts)
 
     def __getitem__(self, i: int) -> Dict[str, Any]:
         output = self.posts[i]
-        output['caption'] = torch.LongTensor(output['caption'])
+        # output['caption'] = torch.LongTensor(output['caption'])#.flatten())
         output['image'] = torch.from_numpy(output['image']) # pylint: disable=undefined-variable, no-member
         return output
 

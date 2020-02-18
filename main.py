@@ -39,7 +39,7 @@ def collate_fn_pad(batch):
     output['label']['intent'] = torch.LongTensor(output['label']['intent'])
     output['label']['semiotic'] = torch.LongTensor(output['label']['semiotic'])
     output['label']['contextual'] = torch.LongTensor(output['label']['contextual'])
-    output['caption'] = torch.nn.utils.rnn.pad_sequence(output['caption']).t() # (batch_size, sequence_length)
+    #output['caption'] = torch.nn.utils.rnn.pad_sequence(output['caption']).t() # (batch_size, sequence_length)
     output['image'] = torch.stack(output['image'], dim=0)
     return output
 
@@ -104,12 +104,12 @@ def main(args: argparse.Namespace):
                                                     batch_size=args.batch_size,
                                                     shuffle=args.shuffle,
                                                     num_workers=num_workers,
-                                                    collate_fn=collate_fn_pad,
+                                                    # collate_fn=collate_fn_pad,
                                                     **kwargs)
     val_data_loader = torch.utils.data.DataLoader(val_dataset,
                                                   batch_size=1,
                                                   num_workers=num_workers,
-                                                  collate_fn=collate_fn_pad,
+                                                  # collate_fn=collate_fn_pad,
                                                   **kwargs)
 
     # Set up the model
@@ -147,7 +147,9 @@ def main(args: argparse.Namespace):
             label = dict.fromkeys(keys, np.array([], dtype=np.int))
             pred = dict.fromkeys(keys, None)
             for _, batch in pbar:
-                caption_data = batch['caption'].to(device)
+                caption_data = batch['caption']
+                print("caption_data passed to model: ", caption_data)
+                #caption_data = caption_data.to(device)
                 image_data = batch['image'].to(device)
                 label_batch = {}
                 for key in keys:
@@ -191,48 +193,50 @@ def main(args: argparse.Namespace):
             if mode == "train":
                 scheduler.step()
 
-            for key in keys:
-                auc_score_ovr = roc_auc_score(label[key], pred[key], multi_class='ovr') # pylint: disable-all
-                auc_score_ovo = roc_auc_score(label[key], pred[key], multi_class='ovo') # pylint: disable-all
-                accuracy = accuracy_score(label[key], np.argmax(pred[key], axis=1))
-                print("[{} - {}] [AUC-OVR={:.3f}, AUC-OVO={:.3f}, ACC={:.3f}]".format(mode, key, auc_score_ovr, auc_score_ovo, accuracy))
+            # for key in keys:
+            #     # print(label[key])
+            #     # print(pred[key])
+            #     #auc_score_ovr = roc_auc_score(label[key], pred[key], multi_class='ovr') # pylint: disable-all
+            #     #auc_score_ovo = roc_auc_score(label[key], pred[key], multi_class='ovo') # pylint: disable-all
+            #     accuracy = accuracy_score(label[key], np.argmax(pred[key], axis=1))
+            #     #print("[{} - {}] [AUC-OVR={:.3f}, AUC-OVO={:.3f}, ACC={:.3f}]".format(mode, key, auc_score_ovr, auc_score_ovo, accuracy))
                 
-                if mode == "eval":
-                    best_auc_ovr = max(best_auc_ovr, auc_score_ovr)
-                    best_auc_ovo = max(best_auc_ovo, auc_score_ovo)
-                    best_acc = max(best_acc, accuracy)
+            #     if mode == "eval":
+            #         best_auc_ovr = max(best_auc_ovr, auc_score_ovr)
+            #         best_auc_ovo = max(best_auc_ovo, auc_score_ovo)
+            #         best_acc = max(best_acc, accuracy)
                 
-                if writer:
-                    writer.add_scalar('AUC-OVR/{}-{}'.format(mode, key), auc_score_ovr, epoch)
-                    writer.add_scalar('AUC-OVO/{}-{}'.format(mode, key), auc_score_ovo, epoch)
-                    writer.add_scalar('ACC/{}-{}'.format(mode, key), accuracy, epoch)
-                    writer.flush()
+            #     if writer:
+            #         writer.add_scalar('AUC-OVR/{}-{}'.format(mode, key), auc_score_ovr, epoch)
+            #         writer.add_scalar('AUC-OVO/{}-{}'.format(mode, key), auc_score_ovo, epoch)
+            #         writer.add_scalar('ACC/{}-{}'.format(mode, key), accuracy, epoch)
+            #         writer.flush()
 
-            if writer:
-                writer.add_scalar('Loss/{}'.format(mode), total_loss, epoch)
-                writer.flush()
+            # if writer:
+            #     writer.add_scalar('Loss/{}'.format(mode), total_loss, epoch)
+            #     writer.flush()
 
             print("[{}] Epoch {}: Loss = {}".format(mode, epoch, total_loss))
             
-    if writer:
-        hparam_dict = {
-            'train_split': args.train_metadata,
-            'val_split': args.val_metadata,
-            'lr': args.lr,
-            'epochs': args.epochs,
-            'batch_size': args.batch_size,
-            'num_workers': args.num_workers,
-            'shuffle': args.shuffle,
-            'lr_scheduler_gamma': args.lr_scheduler_gamma,
-            'lr_scheduler_step_size': args.lr_scheduler_step_size,
-        }
-        metric_dict = {
-            'AUC-OVR': best_auc_ovr,
-            'AUC-OVO': best_auc_ovo,
-            'ACC': best_acc
-        }
-        writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metric_dict)
-        writer.flush()
+    # if writer:
+    #     hparam_dict = {
+    #         'train_split': args.train_metadata,
+    #         'val_split': args.val_metadata,
+    #         'lr': args.lr,
+    #         'epochs': args.epochs,
+    #         'batch_size': args.batch_size,
+    #         'num_workers': args.num_workers,
+    #         'shuffle': args.shuffle,
+    #         'lr_scheduler_gamma': args.lr_scheduler_gamma,
+    #         'lr_scheduler_step_size': args.lr_scheduler_step_size,
+    #     }
+    #     metric_dict = {
+    #         'AUC-OVR': best_auc_ovr,
+    #         'AUC-OVO': best_auc_ovo,
+    #         'ACC': best_acc
+    #     }
+    #     writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metric_dict)
+    #     writer.flush()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="Instagram Intent Classifier")
