@@ -39,7 +39,7 @@ class Model(torch.nn.Module):
                  token_embedding_size: int = 300,
                  image_network_type: str = "identity",
                  caption_network_type: str = "word2vec",
-                 joint_embedding_size: int = 400,
+                 joint_embedding_size: int = 128,
                  intent_dims: int = 7,
                  semiotic_dims: int = 3,
                  contextual_dims: int = 3):
@@ -82,6 +82,8 @@ class Model(torch.nn.Module):
 
         self.image_joint_embedding_layer = torch.nn.Linear(512, self.joint_embedding_size)
         self.caption_hidden_layer = torch.nn.Linear(2*self.token_embedding_size, self.token_embedding_size)
+        self.caption_GRU = torch.nn.GRU(self.token_embedding_size, self.token_embedding_size, 1)
+
         self.caption_joint_embedding_layer = torch.nn.Linear(self.token_embedding_size, self.joint_embedding_size)
 
         self.intent_prediction_layer = torch.nn.Linear(self.joint_embedding_size, self.intent_dims)
@@ -102,10 +104,12 @@ class Model(torch.nn.Module):
 
         # Iterate over the caption
         caption_length = x_caption.size(1)
-        hidden = torch.zeros(x_caption.size(0), self.token_embedding_size).to(x_caption.device)
+        hidden = torch.zeros(1, x_caption.size(0), self.token_embedding_size).to(x_caption.device)
+        out = torch.zeros(1, x_caption.size(0), self.token_embedding_size).to(x_caption.device)
         for t in range(caption_length):
-            x_caption_combined = torch.cat((hidden, x_caption[:, t, :]), dim=1)
-            hidden = self.caption_hidden_layer(x_caption_combined)
+            # x_caption_combined = torch.cat((hidden, x_caption[:, t, :]), dim=1)
+            _, hidden = self.caption_GRU(torch.unsqueeze(x_caption[:, t, :], 0), hidden)
+        hidden = torch.squeeze(hidden)
 
         # Get each embedding
         x_img_joint_embedding = self.image_joint_embedding_layer(x_img)

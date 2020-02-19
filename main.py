@@ -48,7 +48,7 @@ def main(args: argparse.Namespace):
     with open(args.train_metadata, 'r') as f:
         train_posts = json.load(f)
 
-    with open(args.train_metadata, 'r') as f:
+    with open(args.val_metadata, 'r') as f:
         val_posts = json.load(f)
 
     # Load labels
