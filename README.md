@@ -3,8 +3,10 @@
 ## Prerequisite
 
 1. `git clone https://github.com/karansikka1/documentIntent_emnlp19`
-2. Install pytorch, sklearn, tensorboard, numpy
-3. Start development
+2. Install anaconda
+3. `conda env create -f environment.yml`.
+4. `conda activate cse517_projects`.
+5. Start development
 
 ## Run Tensorboard
 
@@ -41,5 +43,5 @@ python main.py --image_text \
 ## Run using the provided script
 
 ```
-sh run_all.sh
+./run_all.sh
 ```
