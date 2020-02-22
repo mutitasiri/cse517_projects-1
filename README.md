@@ -24,6 +24,7 @@ python main.py --image_text \
     ./documentIntent_emnlp19/labels/intent_labels.json \
     ./documentIntent_emnlp19/labels/semiotic_labels.json \
     ./documentIntent_emnlp19/labels/contextual_labels.json \
+    --classification intent \
     --tensorboard
 ```
 
@@ -37,6 +38,7 @@ python main.py --image_text \
     ./documentIntent_emnlp19/labels/semiotic_labels.json \
     ./documentIntent_emnlp19/labels/contextual_labels.json \
     --device cuda:0 \
+    --classification intent \
     --tensorboard
 ```
 
