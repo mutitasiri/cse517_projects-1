@@ -152,3 +152,88 @@ class TextOnlyDataset(torch.utils.data.Dataset):
         output = self.posts[i]
         output['caption'] = torch.LongTensor(output['caption'])
         return output
+
+
+def collate_fn_pad_image_text(batch):
+    """
+    Padds batch of variable length
+    """
+    output = {
+        'id': [],
+        'label': {
+            'intent': [],
+            'semiotic': [],
+            'contextual': [],
+        },
+        'caption': [],
+        'image': [],
+    }
+
+    for sample in batch:
+        output['id'].append(sample['id'])
+        output['label']['intent'].append(sample['label']['intent'])
+        output['label']['semiotic'].append(sample['label']['semiotic'])
+        output['label']['contextual'].append(sample['label']['contextual'])
+        output['caption'].append(sample['caption'])
+        output['image'].append(sample['image'])
+
+    output['label']['intent'] = torch.LongTensor(output['label']['intent'])
+    output['label']['semiotic'] = torch.LongTensor(output['label']['semiotic'])
+    output['label']['contextual'] = torch.LongTensor(output['label']['contextual'])
+    output['caption'] = torch.nn.utils.rnn.pad_sequence(output['caption']).t() # (batch_size, sequence_length)
+    output['image'] = torch.stack(output['image'], dim=0)
+    return output
+
+def collate_fn_pad_image_only(batch):
+    """
+    Padds batch of variable length
+    """
+    output = {
+        'id': [],
+        'label': {
+            'intent': [],
+            'semiotic': [],
+            'contextual': [],
+        },
+        'image': [],
+    }
+
+    for sample in batch:
+        output['id'].append(sample['id'])
+        output['label']['intent'].append(sample['label']['intent'])
+        output['label']['semiotic'].append(sample['label']['semiotic'])
+        output['label']['contextual'].append(sample['label']['contextual'])
+        output['image'].append(sample['image'])
+
+    output['label']['intent'] = torch.LongTensor(output['label']['intent'])
+    output['label']['semiotic'] = torch.LongTensor(output['label']['semiotic'])
+    output['label']['contextual'] = torch.LongTensor(output['label']['contextual'])
+    output['image'] = torch.stack(output['image'], dim=0)
+    return output
+
+def collate_fn_pad_text_only(batch):
+    """
+    Padds batch of variable length
+    """
+    output = {
+        'id': [],
+        'label': {
+            'intent': [],
+            'semiotic': [],
+            'contextual': [],
+        },
+        'caption': [],
+    }
+
+    for sample in batch:
+        output['id'].append(sample['id'])
+        output['label']['intent'].append(sample['label']['intent'])
+        output['label']['semiotic'].append(sample['label']['semiotic'])
+        output['label']['contextual'].append(sample['label']['contextual'])
+        output['caption'].append(sample['caption'])
+
+    output['label']['intent'] = torch.LongTensor(output['label']['intent'])
+    output['label']['semiotic'] = torch.LongTensor(output['label']['semiotic'])
+    output['label']['contextual'] = torch.LongTensor(output['label']['contextual'])
+    output['caption'] = torch.nn.utils.rnn.pad_sequence(output['caption']).t() # (batch_size, sequence_length)
+    return output

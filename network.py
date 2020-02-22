@@ -99,21 +99,31 @@ class Model(torch.nn.Module):
             x_img (Optional[torch.Tensor]) - Input image tensor
             x_caption (Optional[torch.Tensor]) - Input caption tensor
         """
-        x_img = self.image_network(x_img) # (batch_size, img_embedding_dim)
-        x_caption = self.caption_network(x_caption) # (batch_size, caption_length, word_embedding_dim)
+        if x_img is not None:
+            # Get an image embedding
+            x_img = self.image_network(x_img) # (batch_size, img_embedding_dim)
+            
+            # Get an image-text joint embedding
+            x_img_joint_embedding = self.image_joint_embedding_layer(x_img)
+        else:
+            x_img_joint_embedding = torch.zeros(self.joint_embedding_size, device=x_caption.device)
 
-        # Iterate over the caption
-        caption_length = x_caption.size(1)
-        hidden = torch.zeros(1, x_caption.size(0), self.token_embedding_size).to(x_caption.device)
-        out = torch.zeros(1, x_caption.size(0), self.token_embedding_size).to(x_caption.device)
-        for t in range(caption_length):
-            # x_caption_combined = torch.cat((hidden, x_caption[:, t, :]), dim=1)
-            _, hidden = self.caption_GRU(torch.unsqueeze(x_caption[:, t, :], 0), hidden)
-        hidden = torch.squeeze(hidden)
+        if x_caption is not None:
+            # Get a text embedding
+            x_caption = self.caption_network(x_caption) # (batch_size, caption_length, word_embedding_dim)
 
-        # Get each embedding
-        x_img_joint_embedding = self.image_joint_embedding_layer(x_img)
-        x_caption_joint_embedding = self.caption_joint_embedding_layer(hidden)
+            # Iterate over the caption
+            caption_length = x_caption.size(1)
+            hidden = torch.zeros(1, x_caption.size(0), self.token_embedding_size).to(x_caption.device)
+            out = torch.zeros(1, x_caption.size(0), self.token_embedding_size).to(x_caption.device)
+            for t in range(caption_length):
+                # x_caption_combined = torch.cat((hidden, x_caption[:, t, :]), dim=1)
+                _, hidden = self.caption_GRU(torch.unsqueeze(x_caption[:, t, :], 0), hidden)
+            hidden = torch.squeeze(hidden)
+
+            x_caption_joint_embedding = self.caption_joint_embedding_layer(hidden)
+        else:
+            x_caption_joint_embedding = torch.zeros(self.joint_embedding_size, device=x_img.device)
 
         # Fusion
         x_fusion = x_img_joint_embedding + x_caption_joint_embedding

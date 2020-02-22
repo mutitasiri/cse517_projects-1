@@ -8,40 +8,9 @@ import numpy as np
 import torch
 import torch.utils.tensorboard as tensorboard
 
-from data import Dictionary, ImageOnlyDataset, ImageTextDataset, TextOnlyDataset
+from data import Dictionary, ImageOnlyDataset, ImageTextDataset, TextOnlyDataset, \
+                 collate_fn_pad_image_text, collate_fn_pad_image_only, collate_fn_pad_text_only
 from network import Model
-
-def collate_fn_pad(batch):
-    """
-    Padds batch of variable length
-    """
-    output = {
-        'id': [],
-        'label': {
-            'intent': [],
-            'semiotic': [],
-            'contextual': [],
-        },
-        'caption': [],
-        'image': [],
-    }
-
-    max_caption_length = 0
-
-    for sample in batch:
-        output['id'].append(sample['id'])
-        output['label']['intent'].append(sample['label']['intent'])
-        output['label']['semiotic'].append(sample['label']['semiotic'])
-        output['label']['contextual'].append(sample['label']['contextual'])
-        output['caption'].append(sample['caption'])
-        output['image'].append(sample['image'])
-
-    output['label']['intent'] = torch.LongTensor(output['label']['intent'])
-    output['label']['semiotic'] = torch.LongTensor(output['label']['semiotic'])
-    output['label']['contextual'] = torch.LongTensor(output['label']['contextual'])
-    output['caption'] = torch.nn.utils.rnn.pad_sequence(output['caption']).t() # (batch_size, sequence_length)
-    output['image'] = torch.stack(output['image'], dim=0)
-    return output
 
 def main(args: argparse.Namespace):
     # Load input data
@@ -92,25 +61,47 @@ def main(args: argparse.Namespace):
     # Set up data loaders differently based on the task
     # TODO: Extend to ELMo + word2vec etc.
     if args.type == 'image_only':
-        train_dataset = ImageOnlyDataset(train_posts, labels) # TODO: fix
+        train_dataset = ImageOnlyDataset(train_posts, labels)
         val_dataset = ImageOnlyDataset(val_posts, labels)
+        train_data_loader = torch.utils.data.DataLoader(train_dataset,
+                                                        batch_size=args.batch_size,
+                                                        shuffle=args.shuffle,
+                                                        num_workers=num_workers,
+                                                        collate_fn=collate_fn_pad_image_only,
+                                                        **kwargs)
+        val_data_loader = torch.utils.data.DataLoader(val_dataset,
+                                                    batch_size=1,
+                                                    num_workers=num_workers,
+                                                    collate_fn=collate_fn_pad_image_only,
+                                                    **kwargs)
     elif args.type == 'image_text':
         train_dataset = ImageTextDataset(train_posts, labels, dictionary)
         val_dataset = ImageTextDataset(val_posts, labels, dictionary)
+        train_data_loader = torch.utils.data.DataLoader(train_dataset,
+                                                        batch_size=args.batch_size,
+                                                        shuffle=args.shuffle,
+                                                        num_workers=num_workers,
+                                                        collate_fn=collate_fn_pad_image_text,
+                                                        **kwargs)
+        val_data_loader = torch.utils.data.DataLoader(val_dataset,
+                                                    batch_size=1,
+                                                    num_workers=num_workers,
+                                                    collate_fn=collate_fn_pad_image_text,
+                                                    **kwargs)
     elif args.type == 'text_only':
         train_dataset = TextOnlyDataset(train_posts, labels, dictionary)
         val_dataset = TextOnlyDataset(val_posts, labels, dictionary)
-    train_data_loader = torch.utils.data.DataLoader(train_dataset,
-                                                    batch_size=args.batch_size,
-                                                    shuffle=args.shuffle,
+        train_data_loader = torch.utils.data.DataLoader(train_dataset,
+                                                        batch_size=args.batch_size,
+                                                        shuffle=args.shuffle,
+                                                        num_workers=num_workers,
+                                                        collate_fn=collate_fn_pad_text_only,
+                                                        **kwargs)
+        val_data_loader = torch.utils.data.DataLoader(val_dataset,
+                                                    batch_size=1,
                                                     num_workers=num_workers,
-                                                    collate_fn=collate_fn_pad,
+                                                    collate_fn=collate_fn_pad_text_only,
                                                     **kwargs)
-    val_data_loader = torch.utils.data.DataLoader(val_dataset,
-                                                  batch_size=1,
-                                                  num_workers=num_workers,
-                                                  collate_fn=collate_fn_pad,
-                                                  **kwargs)
 
     # Set up the model
     model = Model(vocab_size=dictionary.size()).to(device)
@@ -129,7 +120,16 @@ def main(args: argparse.Namespace):
         writer = None
 
     # Training loop
-    keys = ['intent'] # ['intent', 'semiotic', 'contextual']
+    if args.classification == 'intent':
+        keys = ['intent']
+    elif args.classification == 'semiotic':
+        keys = ['semiotic']
+    elif args.classification == 'contextual':
+        keys = ['contextual']
+    elif args.classification == 'all':
+        keys = ['intent', 'semiotic', 'contextual']
+    else:
+        raise ValueError("args.classification doesn't exist.")
     best_auc_ovr = 0.0
     best_auc_ovo = 0.0
     best_acc = 0.0
@@ -147,8 +147,14 @@ def main(args: argparse.Namespace):
             label = dict.fromkeys(keys, np.array([], dtype=np.int))
             pred = dict.fromkeys(keys, None)
             for _, batch in pbar:
-                caption_data = batch['caption'].to(device)
-                image_data = batch['image'].to(device)
+                if 'caption' not in batch:
+                    caption_data = None
+                else:
+                    caption_data = batch['caption'].to(device)
+                if 'image' not in batch:
+                    image_data = None
+                else:
+                    image_data = batch['image'].to(device)
                 label_batch = {}
                 for key in keys:
                     label_batch[key] = batch['label'][key].to(device)
@@ -245,6 +251,7 @@ if __name__ == '__main__':
     group.add_argument('--image_only', dest='type', action='store_const', const='image_only')
     group.add_argument('--image_text', dest='type', action='store_const', const='image_text')
     group.add_argument('--text_only', dest='type', action='store_const', const='text_only')
+    parser.add_argument('--classification', type=str, required=True, help="Type of loss function to optimize for")
     parser.add_argument('--name', type=str, default='reproduce_experiment', help="Name of the experiment")
     parser.add_argument('--epochs', type=int, default=70, help="Number of epochs")
     parser.add_argument('--lr', type=float, default=5e-4, help="Learning rate (default is 5e-4 according to the paper)")
@@ -260,13 +267,14 @@ if __name__ == '__main__':
     main(parser.parse_args())
 
 """
-python main.py --image_text \
+python main.py --image_only \
     ./documentIntent_emnlp19/splits/train_split_0.json \
     ./documentIntent_emnlp19/splits/val_split_0.json \
     ./documentIntent_emnlp19/labels/intent_labels.json \
     ./documentIntent_emnlp19/labels/semiotic_labels.json \
     ./documentIntent_emnlp19/labels/contextual_labels.json \
-    --name intent_only_v2 \
+    --name intent_split0 \
     --log_dir ./logs \
+    --device cuda:1 \
     --tensorboard
 """ # pylint: disable=pointless-string-statement
