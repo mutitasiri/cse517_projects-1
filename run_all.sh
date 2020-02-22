@@ -15,7 +15,7 @@ do
                 ./documentIntent_emnlp19/labels/semiotic_labels.json \
                 ./documentIntent_emnlp19/labels/contextual_labels.json \
                 --classification ${classification} \
-                --name ${classification}_split${split} \
+                --name ${type}_${classification}_split${split} \
                 --log_dir ${log_dir} \
                 --device ${device} \
                 --tensorboard
