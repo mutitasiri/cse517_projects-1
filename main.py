@@ -1,5 +1,6 @@
 import argparse
 import json
+from pathlib import Path
 from typing import Dict, Optional, List, Any
 import multiprocessing
 import tqdm
@@ -133,6 +134,9 @@ def main(args: argparse.Namespace):
     best_auc_ovr = 0.0
     best_auc_ovo = 0.0
     best_acc = 0.0
+    best_model = None
+    best_optimizer = None
+    best_scheduler = None
     for epoch in range(args.epochs):
         for mode in ["train", "eval"]:
             # Set up a progress bar
@@ -207,6 +211,9 @@ def main(args: argparse.Namespace):
                     best_auc_ovr = max(best_auc_ovr, auc_score_ovr)
                     best_auc_ovo = max(best_auc_ovo, auc_score_ovo)
                     best_acc = max(best_acc, accuracy)
+                    best_model = model
+                    best_optimizer = optimizer
+                    best_scheduler = scheduler
                 
                 if writer:
                     writer.add_scalar('AUC-OVR/{}-{}'.format(mode, key), auc_score_ovr, epoch)
@@ -219,26 +226,36 @@ def main(args: argparse.Namespace):
                 writer.flush()
 
             print("[{}] Epoch {}: Loss = {}".format(mode, epoch, total_loss))
-            
+
+    hparam_dict = {
+        'train_split': args.train_metadata,
+        'val_split': args.val_metadata,
+        'lr': args.lr,
+        'epochs': args.epochs,
+        'batch_size': args.batch_size,
+        'num_workers': args.num_workers,
+        'shuffle': args.shuffle,
+        'lr_scheduler_gamma': args.lr_scheduler_gamma,
+        'lr_scheduler_step_size': args.lr_scheduler_step_size,
+    }
+    metric_dict = {
+        'AUC-OVR': best_auc_ovr,
+        'AUC-OVO': best_auc_ovo,
+        'ACC': best_acc
+    }
+
     if writer:
-        hparam_dict = {
-            'train_split': args.train_metadata,
-            'val_split': args.val_metadata,
-            'lr': args.lr,
-            'epochs': args.epochs,
-            'batch_size': args.batch_size,
-            'num_workers': args.num_workers,
-            'shuffle': args.shuffle,
-            'lr_scheduler_gamma': args.lr_scheduler_gamma,
-            'lr_scheduler_step_size': args.lr_scheduler_step_size,
-        }
-        metric_dict = {
-            'AUC-OVR': best_auc_ovr,
-            'AUC-OVO': best_auc_ovo,
-            'ACC': best_acc
-        }
         writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metric_dict)
         writer.flush()
+    
+    Path(args.output_dir).mkdir(exist_ok=True)
+    torch.save({
+        'hparam_dict': hparam_dict,
+        'metric_dict': metric_dict,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+    }, Path(args.output_dir) / '{}.pt'.format(args.name))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="Instagram Intent Classifier")
@@ -263,6 +280,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr_scheduler_step_size', type=int, default=15, help="Step size for learning rate scheduler")
     parser.add_argument('--tensorboard', dest='tensorboard', action='store_true')
     parser.add_argument('--log_dir', type=str, default='./logs', help="Log directory")
+    parser.add_argument('--output_dir', type=str, default='./outputs', help="Output directory")
     print(parser.parse_args())
     main(parser.parse_args())
 

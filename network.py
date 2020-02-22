@@ -106,7 +106,7 @@ class Model(torch.nn.Module):
             # Get an image-text joint embedding
             x_img_joint_embedding = self.image_joint_embedding_layer(x_img)
         else:
-            x_img_joint_embedding = torch.zeros(self.joint_embedding_size, device=x_caption.device)
+            x_img_joint_embedding = torch.zeros((x_caption.shape[0], self.joint_embedding_size), device=x_caption.device)
 
         if x_caption is not None:
             # Get a text embedding
@@ -123,11 +123,11 @@ class Model(torch.nn.Module):
 
             x_caption_joint_embedding = self.caption_joint_embedding_layer(hidden)
         else:
-            x_caption_joint_embedding = torch.zeros(self.joint_embedding_size, device=x_img.device)
+            x_caption_joint_embedding = torch.zeros((x_img.shape[0], self.joint_embedding_size), device=x_img.device)
 
         # Fusion
         x_fusion = x_img_joint_embedding + x_caption_joint_embedding
-
+        
         # Prediction
         pred_intent = self.intent_prediction_layer(x_fusion)
         pred_semiotic = self.semiotic_prediction_layer(x_fusion)
