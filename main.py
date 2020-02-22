@@ -241,7 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('label_intent', type=str, help="Path to label for intent")
     parser.add_argument('label_semiotic', type=str, help="Path to label for semiotic")
     parser.add_argument('label_contextual', type=str, help="Path to label for contextual")
-    group = parser.add_mutually_exclusive_group(required=True, help="Type of training")
+    group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--image_only', dest='type', action='store_const', const='image_only')
     group.add_argument('--image_text', dest='type', action='store_const', const='image_text')
     group.add_argument('--text_only', dest='type', action='store_const', const='text_only')
