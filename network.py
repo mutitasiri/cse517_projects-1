@@ -30,6 +30,54 @@ class word2vec(torch.nn.Module):
         x = self.embedding_layer(x)
         return x
 
+class CBOW(torch.nn.Module):
+    """
+    CBOW class
+    """
+    def __init__(self, vocab_size: int, embedding_size: int = 300, context_size: int = 2):
+        """
+        Constructor
+
+        Args:
+            vocab_size (int) - Size of the dictionary
+            embedding_size (int) - Dimension of the token embedding
+            context_size (int) - Size of surrounding contexts of the word
+        """
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.embedding_size = embedding_size
+        self.context_size = context_size
+        self.embedding_layer = torch.nn.Embedding(self.vocab_size, self.embedding_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor: # pylint: disable=arguments-differ
+        """
+        Forward pass
+
+        Args:
+            x (torch.Tensor) - Input tensor
+        """
+        context_size = self.context_size
+        nbatch = x.shape[0]
+        lseq = x.shape[1]
+        
+        out = torch.LongTensor().to(x.device)
+        nbatch = x.shape[0]
+        lseq = x.shape[1]
+        for i in range(nbatch):
+            temp_tensor = x[i]
+            context = torch.LongTensor().to(x.device)
+            for j in range(lseq):
+                context_before = torch.LongTensor([temp_tensor[j-k] if j-k >= 0 else torch.LongTensor([0]) for k in range(1, context_size+1)]).to(x.device)
+                context_after = torch.LongTensor([temp_tensor[j+k] if j+k < lseq else torch.LongTensor([0]) for k in range(1, context_size+1)]).to(x.device)
+                temp = torch.cat((context_before, context_after))
+                context = torch.cat((context, temp), dim=0)
+            context = context.view(lseq, context_size*2)
+            out = torch.cat((out, context))
+        out = out.view(nbatch, lseq, context_size*2)
+        
+        out = torch.sum(self.embedding_layer(out), dim=1)
+        return out    
+    
 class Model(torch.nn.Module):
     """
     Model class
@@ -37,6 +85,7 @@ class Model(torch.nn.Module):
     def __init__(self,
                  vocab_size: int,
                  token_embedding_size: int = 300,
+                 context_size: int = 2,
                  image_network_type: str = "identity",
                  caption_network_type: str = "word2vec",
                  joint_embedding_size: int = 128,
@@ -49,6 +98,7 @@ class Model(torch.nn.Module):
         Args:
             vocab_size (int) - Size of the dictionary
             token_embedding_size (int) - Dimension of the token embedding
+            context_size (int) - Size of surrounding contexts of the word
             image_network_type
             caption_network_type
             joint_embedding_size
@@ -59,6 +109,7 @@ class Model(torch.nn.Module):
         super().__init__()
         self.vocab_size = vocab_size
         self.token_embedding_size = token_embedding_size
+        self.context_size = context_size
         self.image_network_type = image_network_type
         self.caption_network_type = caption_network_type
         self.joint_embedding_size = joint_embedding_size
@@ -75,6 +126,8 @@ class Model(torch.nn.Module):
 
         if self.caption_network_type == "word2vec":
             self.caption_network = word2vec(self.vocab_size, self.token_embedding_size)
+        elif self.caption_network_type == "CBOW":
+            self.caption_network = CBOW(self.vocab_size, self.token_embedding_size, self.context_size)
         elif self.caption_network_type == "ELMo":
             raise NotImplementedError
         else:
